@@ -1,0 +1,6 @@
+/tmp/*
+/**/.ipynb_checkpoints
+
+# except
+!/**/.gitignore
+!/**/.keep
