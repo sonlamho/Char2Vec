@@ -27,12 +27,12 @@ class Char2Vec(object):
       # self.x_in = tf.placeholder(dtype=self.DTYPE, shape=[None, self.V], name='x_in')  #  batch_size will replace None in shape
       # self.y_labels = tf.placeholder(dtype=self.DTYPE,
       #                               shape=[None, self.N_HEADS*self.V])
-      self.dataset = tf.data.Dataset().batch(self.cfg.BATCH).from_generator(
+      self.dataset = tf.data.Dataset().from_generator(
         self.data_generator,
         (self.DTYPE, self.DTYPE),
-        (tf.TensorShape([None, self.V]), tf.TensorShape([None, self.N_HEADS*self.V])),
+        (tf.TensorShape([self.V]), tf.TensorShape([self.N_HEADS*self.V])),
         args=[corpus_path, self.cfg.WINDOW_SIZES]
-      )
+      ).batch(self.cfg.BATCH)
       self.data_iter = self.dataset.make_initializable_iterator()
       self.x_in, self.y_labels = self.data_iter.get_next()
 
@@ -48,6 +48,7 @@ class Char2Vec(object):
       ))
       self._optimizer = tf.train.AdamOptimizer()
       self.train_step = self._optimizer.minimize(self.loss)
+      self.__graph_created = True
 
   def data_generator(self, filepath, window_sizes):
     max_window = max(window_sizes)
@@ -65,14 +66,14 @@ class Char2Vec(object):
         yield self._xy_arrays(window, midpos=max_window)
 
   def _xy_arrays(self, window, midpos):
-    X = self.tokenizer.to_1hot(window[midpos])  #shape (1, V)
+    X = self.tokenizer.to_1hot(window[midpos]).flatten()  #length V
     Ys = []
     for s in self.cfg.WINDOW_SIZES:
       t_left = [window[midpos - 1 - i] for i in range(s)]
       t_right = [window[midpos + 1 + i] for i in range(s)]
       Ys.append(normalized(self.tokenizer.to_1hot(t_left).sum(axis=0)))
       Ys.append(normalized(self.tokenizer.to_1hot(t_right).sum(axis=0)))
-    Y = normalized(np.concatenate(Ys)).reshape([1, self.N_HEADS*self.V])
+    Y = normalized(np.concatenate(Ys))
     return X, Y
 
   def fit(self, path_to_corpus):
