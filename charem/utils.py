@@ -39,6 +39,7 @@ class Tokenizer(object):
     """Reconstruct the text given an array"""
     return self.from_ints([row.argmax() for row in arr])
 
+@jit(nopython=True)
 def normalized(arr):
   total = arr.sum()
   return arr / total

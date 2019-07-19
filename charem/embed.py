@@ -14,8 +14,6 @@ class CONFIG:
 
 class Char2Vec(object):
 
-  N_HEADS = 3
-
   def __init__(self, config=CONFIG, alphabet=ALPHABET, unk='~', DTYPE='float32'):
     self.cfg = config
     self.graph = tf.Graph()
@@ -29,32 +27,18 @@ class Char2Vec(object):
       self.x_in = tf.placeholder(dtype=self.DTYPE, shape=[None, self.V], name='x_in')  #  batch_size will replace None in shape
       self.U = tf.get_variable(dtype=self.DTYPE, shape=[self.V, self.cfg.D], name='U')
       self.rep = tf.matmul(self.x_in, self.U)   # shape [batch_size, D]
-      self.Ws, self.logits = self._construct_logits(self.rep, self.N_HEADS)
-      #self.y_hats = [tf.nn.softmax(t, axis=-1) for t in self.logits]
-      self.y_labels = [
-        tf.placeholder(dtype=self.DTYPE, shape=[None, self.V])
-        for i in range(self.N_HEADS)
-      ]
-      self.losses = [
-        tf.nn.softmax_cross_entropy_with_logits_v2(
-          labels=label, logits=logit)
-        for logit, label in zip(self.logits, self.y_labels)
-      ]
-      self.loss = tf.add_n([tf.reduce_mean(t) for t in self.losses])
+      self.W = tf.get_variable(dtype=self.DTYPE,
+                               shape=[self.cfg.D, self.N_HEADS*self.V],
+                               name='W')
+      self.logits = tf.matmul(self.rep, self.W)  # shape [batch_size, N*V]
+      self.y_labels = tf.placeholder(dtype=self.DTYPE,
+                                    shape=[None, self.N_HEADS*self.V])
+
+      self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
+        labels=self.y_labels, logits=self.logits
+      ))
       self._optimizer = tf.train.AdamOptimizer()
       self.train_step = self._optimizer.minimize(self.loss)
-
-  def _construct_logits(self, rep, n_heads):
-    """ """
-    Ws = []
-    logits = []
-    with self.graph.as_default():
-      for i in range(n_heads):
-        weights_i = tf.get_variable(dtype=self.DTYPE, shape=[self.cfg.D, self.V], name='W_'+str(i))
-        logits_i = tf.matmul(rep, weights_i)
-        Ws.append(weights_i)
-        logits.append(logits_i)
-    return Ws, logits
 
   def data_generator(self, filepath, window_sizes):
     max_window = max(window_sizes)
@@ -65,14 +49,18 @@ class Char2Vec(object):
       while True:
         # extend buffer to be enough
         while len(buffer) < length*10:
-          buffer.extend(next_line_with_rotation(f))
+          buffer.extend(next_line_with_rotation(f).lower())
 
         window = [buffer[i] for i in range(length)]
         buffer.popleft()
         yield self._xy_arrays(window, midpos=max_window)
 
   def _xy_arrays(self, window, midpos):
-    # TODO:
+    X = self.tokenizer.to_1hot(window[midpos])
+    for s in self.cfg.WINDOW_SIZES:
+      text_left = [window[midpos - 1 - i] for i in range(s)]
+      text_right = [window[midpos + 1 + i] for i in range(s)]
+
     return window
 
   def fit(self, path_to_corpus):
