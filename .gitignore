@@ -1,5 +1,6 @@
 /tmp/*
 /**/.ipynb_checkpoints
+/**/__pycache__
 
 # except
 !/**/.gitignore
