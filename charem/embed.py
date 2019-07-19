@@ -1,19 +1,16 @@
 
 import numpy as np
 import tensorflow as tf
-from .utils import Tokenizer, ALPHABET, normalized
+from itertools import islice
+from .utils import Tokenizer, ALPHABET, normalized, next_line_with_rotation
+from collections import deque
 
 class CONFIG:
   """Model hyperparams"""
   D = 20          # embedding dimension
-
-  # left and right window size
-  L_WINDOW = 2
-  R_WINDOW = 2
-
+  WINDOW_SIZES = [1,3]
   BATCH = 128
   EPOCHS = 30
-
 
 class Char2Vec(object):
 
@@ -25,6 +22,7 @@ class Char2Vec(object):
     self.DTYPE = DTYPE
     self.tokenizer = Tokenizer(alphabet, unk)
     self.V = self.tokenizer.V
+    self.N_HEADS = 2 * len(config.WINDOW_SIZES)
 
   def create_graph(self):
     with self.graph.as_default():
@@ -57,6 +55,25 @@ class Char2Vec(object):
         Ws.append(weights_i)
         logits.append(logits_i)
     return Ws, logits
+
+  def data_generator(self, filepath, window_sizes):
+    max_window = max(window_sizes)
+    length = 1 + 2*max_window
+    with open(filepath, 'r', encoding='utf-8') as f:
+      pos = 0
+      buffer = deque([])
+      while True:
+        # extend buffer to be enough
+        while len(buffer) < length*10:
+          buffer.extend(next_line_with_rotation(f))
+
+        window = [buffer[i] for i in range(length)]
+        buffer.popleft()
+        yield self._xy_arrays(window, midpos=max_window)
+
+  def _xy_arrays(self, window, midpos):
+    # TODO:
+    return window
 
   def fit(self, path_to_corpus):
     pass #TODO

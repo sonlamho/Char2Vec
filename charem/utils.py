@@ -1,6 +1,7 @@
 
 import re
 import numpy as np
+from numba import jit
 
 ALPHABET = """abcdefghijklmnopqrstuvwxyz1234567890,.()[]"' -\n"""
 
@@ -41,3 +42,10 @@ class Tokenizer(object):
 def normalized(arr):
   total = arr.sum()
   return arr / total
+
+def next_line_with_rotation(f):
+  s = f.readline()
+  if len(s)==0:
+    f.seek(0)
+    s = f.readline()
+  return s
