@@ -1,20 +1,20 @@
 
 import numpy as np
 import tensorflow as tf
-from itertools import islice
 from .utils import Tokenizer, ALPHABET, normalized, next_line_with_rotation
 from collections import deque
+from functools import partial
 
 class CONFIG:
   """Model hyperparams"""
   D = 20          # embedding dimension
-  WINDOW_SIZES = [1,3]
+  WINDOW_SIZES = [2,4]
   BATCH = 128
   EPOCHS = 30
 
 class Char2Vec(object):
 
-  def __init__(self, config=CONFIG, alphabet=ALPHABET, unk='~', DTYPE='float32'):
+  def __init__(self, config=CONFIG, alphabet=ALPHABET, unk='~', DTYPE=tf.float32):
     self.cfg = config
     self.graph = tf.Graph()
     self.DTYPE = DTYPE
@@ -22,17 +22,26 @@ class Char2Vec(object):
     self.V = self.tokenizer.V
     self.N_HEADS = 2 * len(config.WINDOW_SIZES)
 
-  def create_graph(self):
+  def create_graph(self, corpus_path):
     with self.graph.as_default():
-      self.x_in = tf.placeholder(dtype=self.DTYPE, shape=[None, self.V], name='x_in')  #  batch_size will replace None in shape
+      # self.x_in = tf.placeholder(dtype=self.DTYPE, shape=[None, self.V], name='x_in')  #  batch_size will replace None in shape
+      # self.y_labels = tf.placeholder(dtype=self.DTYPE,
+      #                               shape=[None, self.N_HEADS*self.V])
+      self.dataset = tf.data.Dataset().batch(self.cfg.BATCH).from_generator(
+        self.data_generator,
+        (self.DTYPE, self.DTYPE),
+        (tf.TensorShape([None, self.V]), tf.TensorShape([None, self.N_HEADS*self.V])),
+        args=[corpus_path, self.cfg.WINDOW_SIZES]
+      )
+      self.data_iter = self.dataset.make_initializable_iterator()
+      self.x_in, self.y_labels = self.data_iter.get_next()
+
       self.U = tf.get_variable(dtype=self.DTYPE, shape=[self.V, self.cfg.D], name='U')
       self.rep = tf.matmul(self.x_in, self.U)   # shape [batch_size, D]
       self.W = tf.get_variable(dtype=self.DTYPE,
                                shape=[self.cfg.D, self.N_HEADS*self.V],
                                name='W')
       self.logits = tf.matmul(self.rep, self.W)  # shape [batch_size, N*V]
-      self.y_labels = tf.placeholder(dtype=self.DTYPE,
-                                    shape=[None, self.N_HEADS*self.V])
 
       self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
         labels=self.y_labels, logits=self.logits
@@ -56,12 +65,15 @@ class Char2Vec(object):
         yield self._xy_arrays(window, midpos=max_window)
 
   def _xy_arrays(self, window, midpos):
-    X = self.tokenizer.to_1hot(window[midpos])
+    X = self.tokenizer.to_1hot(window[midpos])  #shape (1, V)
+    Ys = []
     for s in self.cfg.WINDOW_SIZES:
-      text_left = [window[midpos - 1 - i] for i in range(s)]
-      text_right = [window[midpos + 1 + i] for i in range(s)]
-
-    return window
+      t_left = [window[midpos - 1 - i] for i in range(s)]
+      t_right = [window[midpos + 1 + i] for i in range(s)]
+      Ys.append(normalized(self.tokenizer.to_1hot(t_left).sum(axis=0)))
+      Ys.append(normalized(self.tokenizer.to_1hot(t_right).sum(axis=0)))
+    Y = normalized(np.concatenate(Ys)).reshape([1, self.N_HEADS*self.V])
+    return X, Y
 
   def fit(self, path_to_corpus):
     pass #TODO
