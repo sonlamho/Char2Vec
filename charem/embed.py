@@ -10,6 +10,7 @@ class CONFIG:
   D = 20          # embedding dimension
   WINDOW_SIZES = [2,4]
   BATCH = 128
+  SHUFF_BUFFER = 1000
   EPOCHS = 30
 
 class Char2Vec(object):
@@ -24,15 +25,14 @@ class Char2Vec(object):
 
   def create_graph(self, corpus_path):
     with self.graph.as_default():
-      # self.x_in = tf.placeholder(dtype=self.DTYPE, shape=[None, self.V], name='x_in')  #  batch_size will replace None in shape
-      # self.y_labels = tf.placeholder(dtype=self.DTYPE,
-      #                               shape=[None, self.N_HEADS*self.V])
-      self.dataset = tf.data.Dataset().from_generator(
+      dataset = tf.data.Dataset().from_generator(
         self.data_generator,
         (self.DTYPE, self.DTYPE),
         (tf.TensorShape([self.V]), tf.TensorShape([self.N_HEADS*self.V])),
         args=[corpus_path, self.cfg.WINDOW_SIZES]
-      ).batch(self.cfg.BATCH)
+      )
+      dataset = dataset.shuffle(self.cfg.SHUFF_BUFFER)
+      self.dataset = dataset.batch(self.cfg.BATCH)
       self.data_iter = self.dataset.make_initializable_iterator()
       self.x_in, self.y_labels = self.data_iter.get_next()
 
@@ -50,10 +50,10 @@ class Char2Vec(object):
       self.train_step = self._optimizer.minimize(self.loss)
       self.__graph_created = True
 
-  def data_generator(self, filepath, window_sizes):
+  def data_generator(self, corpus_path, window_sizes):
     max_window = max(window_sizes)
     length = 1 + 2*max_window
-    with open(filepath, 'r', encoding='utf-8') as f:
+    with open(corpus_path, 'r', encoding='utf-8') as f:
       pos = 0
       buffer = deque([])
       while True:
