@@ -10,16 +10,16 @@ The model naturally learn to group characters into:
 - Alphabet `A-Z`;
 - Left brackets `(,[` vs right brackets `),]`.
 
-![alt text](docs/PCA-0-1.png "PCA 0-1")
+![alt text](docs/PCA-0-1.png "PCA 0-1 ")
 
 Note that `1` and `9` are quite distinct from other digits because years such as `"19XX"` appears quite often in the corpus.
 
 ---
 
 More subtle grouping like vowels vs consonants can also be learned at the same time:
-- Notice `A,E,I,O,U` hanging out in the top left corner, with `Y` trying to join the club.
+- Notice `A,E,I,O,U` hanging out in their own group, with `Y` trying to join the club.
 
-![alt text](docs/PCA-4-5.png "PCA 4-5")
+![alt text](docs/T-SNE_p5.png "PCA 4-5")
 
 ---
 
