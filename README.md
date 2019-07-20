@@ -1,5 +1,5 @@
 # Char2Vec
-Character embedding following word-vector Word2Vec.
+Character embedding following word-vector Word2Vec. (Work-in-progress)
 
 ---
 
