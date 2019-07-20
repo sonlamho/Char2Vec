@@ -7,11 +7,12 @@ from functools import partial
 
 class CONFIG:
   """Model hyperparams"""
-  D = 20          # embedding dimension
-  WINDOW_SIZES = [2,4]
-  BATCH = 256
+  D = 10          # embedding dimension
+  WINDOW_SIZES = [1,2]
+  BATCH = 32
   SHUFF_BUFFER = 10000
-  EPOCHS = 30
+  TOTAL_STEPS = 20000
+  GPU = False
 
 class Char2Vec(object):
 
@@ -36,18 +37,20 @@ class Char2Vec(object):
       self.data_iter = self.dataset.make_initializable_iterator()
       self.x_in, self.y_labels = self.data_iter.get_next()
 
-      self.U = tf.get_variable(dtype=self.DTYPE, shape=[self.V, self.cfg.D], name='U')
-      self.rep = tf.matmul(self.x_in, self.U)   # shape [batch_size, D]
-      self.W = tf.get_variable(dtype=self.DTYPE,
+      device = '/device:GPU:0' if self.cfg.GPU else '/cpu:0'
+      with self.graph.device(device):
+        self.U = tf.get_variable(dtype=self.DTYPE, shape=[self.V, self.cfg.D], name='U')
+        self.rep = tf.matmul(self.x_in, self.U)   # shape [batch_size, D]
+        self.W = tf.get_variable(dtype=self.DTYPE,
                                shape=[self.cfg.D, self.N_HEADS*self.V],
                                name='W')
-      self.logits = tf.matmul(self.rep, self.W)  # shape [batch_size, N*V]
+        self.logits = tf.matmul(self.rep, self.W)  # shape [batch_size, N*V]
 
-      self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-        labels=self.y_labels, logits=self.logits
-      ))
-      self._optimizer = tf.train.AdamOptimizer()
-      self.train_step = self._optimizer.minimize(self.loss)
+        self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+          labels=self.y_labels, logits=self.logits
+        ))
+        self._optimizer = tf.train.AdamOptimizer()
+        self.train_step = self._optimizer.minimize(self.loss)
       self.__graph_created = True
 
   def data_generator(self, corpus_path, window_sizes):
