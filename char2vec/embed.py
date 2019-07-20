@@ -9,8 +9,8 @@ class CONFIG:
   """Model hyperparams"""
   D = 20          # embedding dimension
   WINDOW_SIZES = [2,4]
-  BATCH = 128
-  SHUFF_BUFFER = 1000
+  BATCH = 256
+  SHUFF_BUFFER = 10000
   EPOCHS = 30
 
 class Char2Vec(object):
@@ -43,7 +43,7 @@ class Char2Vec(object):
                                name='W')
       self.logits = tf.matmul(self.rep, self.W)  # shape [batch_size, N*V]
 
-      self.loss = tf.reduce_mean(tf.nn.softmax_cross_entropy_with_logits_v2(
+      self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
         labels=self.y_labels, logits=self.logits
       ))
       self._optimizer = tf.train.AdamOptimizer()
@@ -63,7 +63,8 @@ class Char2Vec(object):
 
         window = [buffer[i] for i in range(length)]
         buffer.popleft()
-        yield self._xy_arrays(window, midpos=max_window)
+        #yield self._xy_arrays(window, midpos=max_window)
+        yield self._xy_arrays_sigmoid(window, midpos=max_window)
 
   def _xy_arrays(self, window, midpos):
     X = self.tokenizer.to_1hot(window[midpos]).flatten()  #length V
@@ -74,6 +75,18 @@ class Char2Vec(object):
       Ys.append(normalized(self.tokenizer.to_1hot(t_left).sum(axis=0)))
       Ys.append(normalized(self.tokenizer.to_1hot(t_right).sum(axis=0)))
     Y = normalized(np.concatenate(Ys))
+    return X, Y
+
+  def _xy_arrays_sigmoid(self, window, midpos):
+    X = self.tokenizer.to_1hot(window[midpos]).flatten()  #length V
+    Ys = []
+    for s in self.cfg.WINDOW_SIZES:
+      t_left = [window[midpos - 1 - i] for i in range(s)]
+      t_right = [window[midpos + 1 + i] for i in range(s)]
+      Ys.append(self.tokenizer.to_1hot(t_left).sum(axis=0))
+      Ys.append(self.tokenizer.to_1hot(t_right).sum(axis=0))
+    Y = np.concatenate(Ys)
+    Y = (Y > 0).astype(np.float32)
     return X, Y
 
   def fit(self, path_to_corpus):
