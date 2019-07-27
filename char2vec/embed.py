@@ -11,8 +11,8 @@ class CONFIG:
   WINDOW_SIZES = [1,2,3]
   BATCH = 32
   SHUFF_BUFFER = 10000
-  TOTAL_STEPS = 30000
-  GPU = True
+  TOTAL_STEPS = 30001
+  GPU = False
 
 class Char2Vec(object):
 
