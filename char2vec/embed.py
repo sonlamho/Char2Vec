@@ -14,6 +14,16 @@ class CONFIG:
   TOTAL_STEPS = 30001
   GPU = False
 
+  @classmethod
+  def show(cls):
+    print('Showing {}'.format(cls.__name__))
+    for a in dir(cls):
+      if not a.startswith('_'):
+        ob = getattr(cls, a)
+        if not callable(ob):
+          print('  {} = {}'.format(a, ob))
+
+
 class Char2Vec(object):
 
   def __init__(self, corpus_path, config=CONFIG, alphabet=ALPHABET, unk='~', DTYPE=tf.float32):
