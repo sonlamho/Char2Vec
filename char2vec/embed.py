@@ -8,11 +8,11 @@ from functools import partial
 class CONFIG:
   """Model hyperparams"""
   D = 10          # embedding dimension
-  WINDOW_SIZES = [1,2]
+  WINDOW_SIZES = [1,2,3]
   BATCH = 32
   SHUFF_BUFFER = 10000
-  TOTAL_STEPS = 20000
-  GPU = False
+  TOTAL_STEPS = 30000
+  GPU = True
 
 class Char2Vec(object):
 
@@ -23,9 +23,12 @@ class Char2Vec(object):
     self.tokenizer = Tokenizer(alphabet, unk)
     self.V = self.tokenizer.V
     self.N_HEADS = 2 * len(config.WINDOW_SIZES)
+    self.__graph_created = False
 
   def create_graph(self, corpus_path):
     with self.graph.as_default():
+      self.batch_size = tf.placeholder_with_default(
+        tf.constant(self.cfg.BATCH, dtype=tf.int64), shape=[], name='batch_size')
       dataset = tf.data.Dataset().from_generator(
         self.data_generator,
         (self.DTYPE, self.DTYPE),
@@ -33,7 +36,8 @@ class Char2Vec(object):
         args=[corpus_path, self.cfg.WINDOW_SIZES]
       )
       dataset = dataset.shuffle(self.cfg.SHUFF_BUFFER)
-      self.dataset = dataset.batch(self.cfg.BATCH)
+      dataset = dataset.batch(self.batch_size)
+      self.dataset = dataset.prefetch(10)
       self.data_iter = self.dataset.make_initializable_iterator()
       self.x_in, self.y_labels = self.data_iter.get_next()
 
@@ -51,48 +55,43 @@ class Char2Vec(object):
         ))
         self._optimizer = tf.train.AdamOptimizer()
         self.train_step = self._optimizer.minimize(self.loss)
-      self.__graph_created = True
+        self.__graph_created = True
 
   def data_generator(self, corpus_path, window_sizes):
     max_window = max(window_sizes)
     length = 1 + 2*max_window
     with open(corpus_path, 'r', encoding='utf-8') as f:
-      pos = 0
+      # Initialize buffer and window
       buffer = deque([])
+      window = deque([])
+      while len(buffer) < length * 10 + max_window:
+        buffer.extend(next_line_with_rotation(f).lower())
+      for i in range(length):
+        window.append(buffer.popleft())
+      assert len(window) == length
+      #
       while True:
-        # extend buffer to be enough
+        # extend buffer if needed
         while len(buffer) < length*10:
           buffer.extend(next_line_with_rotation(f).lower())
-
-        window = [buffer[i] for i in range(length)]
-        buffer.popleft()
-        #yield self._xy_arrays(window, midpos=max_window)
-        yield self._xy_arrays_sigmoid(window, midpos=max_window)
+        #
+        window.popleft()
+        window.append(buffer.popleft())
+        yield self._xy_arrays(window, midpos=max_window)
 
   def _xy_arrays(self, window, midpos):
     X = self.tokenizer.to_1hot(window[midpos]).flatten()  #length V
     Ys = []
-    for s in self.cfg.WINDOW_SIZES:
-      t_left = [window[midpos - 1 - i] for i in range(s)]
-      t_right = [window[midpos + 1 + i] for i in range(s)]
-      Ys.append(normalized(self.tokenizer.to_1hot(t_left).sum(axis=0)))
-      Ys.append(normalized(self.tokenizer.to_1hot(t_right).sum(axis=0)))
-    Y = normalized(np.concatenate(Ys))
-    return X, Y
-
-  def _xy_arrays_sigmoid(self, window, midpos):
-    X = self.tokenizer.to_1hot(window[midpos]).flatten()  #length V
-    Ys = []
-    for s in self.cfg.WINDOW_SIZES:
-      t_left = [window[midpos - 1 - i] for i in range(s)]
-      t_right = [window[midpos + 1 + i] for i in range(s)]
-      Ys.append(self.tokenizer.to_1hot(t_left).sum(axis=0))
-      Ys.append(self.tokenizer.to_1hot(t_right).sum(axis=0))
+    for p in self.cfg.WINDOW_SIZES:
+      t_left = window[midpos - p]
+      t_right = window[midpos + p]
+      Ys.append(self.tokenizer.to_1hot(t_left).flatten())
+      Ys.append(self.tokenizer.to_1hot(t_right).flatten())
     Y = np.concatenate(Ys)
-    Y = (Y > 0).astype(np.float32)
     return X, Y
 
   def fit(self, path_to_corpus):
+
     pass #TODO
 
 
