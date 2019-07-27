@@ -16,48 +16,47 @@ class CONFIG:
 
 class Char2Vec(object):
 
-  def __init__(self, config=CONFIG, alphabet=ALPHABET, unk='~', DTYPE=tf.float32):
-    self.cfg = config
-    self.graph = tf.Graph()
-    self.DTYPE = DTYPE
-    self.tokenizer = Tokenizer(alphabet, unk)
-    self.V = self.tokenizer.V
-    self.N_HEADS = 2 * len(config.WINDOW_SIZES)
-    self.__graph_created = False
+  def __init__(self, corpus_path, config=CONFIG, alphabet=ALPHABET, unk='~', DTYPE=tf.float32):
+    self._corpus_path = corpus_path
+    self._cfg = config
+    self._DTYPE = DTYPE
+    self._tokenizer = Tokenizer(alphabet, unk)
+    self._V = self._tokenizer.V
+    self._N_HEADS = 2 * len(config.WINDOW_SIZES)
+    self._graph = None
 
-  def create_graph(self, corpus_path):
-    with self.graph.as_default():
-      self.batch_size = tf.placeholder_with_default(
-        tf.constant(self.cfg.BATCH, dtype=tf.int64), shape=[], name='batch_size')
+  def _create_graph(self):
+    self._graph = tf.Graph()
+    with self._graph.as_default():
+      self._batch_size = tf.placeholder_with_default(
+        tf.constant(self._cfg.BATCH, dtype=tf.int64), shape=[], name='batch_size')
       dataset = tf.data.Dataset().from_generator(
-        self.data_generator,
-        (self.DTYPE, self.DTYPE),
-        (tf.TensorShape([self.V]), tf.TensorShape([self.N_HEADS*self.V])),
-        args=[corpus_path, self.cfg.WINDOW_SIZES]
+        self._data_generator,
+        (self._DTYPE, self._DTYPE),
+        (tf.TensorShape([self._V]), tf.TensorShape([self._N_HEADS*self._V])),
+        args=[self._corpus_path, self._cfg.WINDOW_SIZES]
       )
-      dataset = dataset.shuffle(self.cfg.SHUFF_BUFFER)
-      dataset = dataset.batch(self.batch_size)
-      self.dataset = dataset.prefetch(10)
-      self.data_iter = self.dataset.make_initializable_iterator()
-      self.x_in, self.y_labels = self.data_iter.get_next()
+      dataset = dataset.shuffle(self._cfg.SHUFF_BUFFER)
+      dataset = dataset.batch(self._batch_size).prefetch(10)
+      self._data_iter = dataset.make_initializable_iterator()
+      self._x_in, self._y_labels = self._data_iter.get_next()
 
-      device = '/device:GPU:0' if self.cfg.GPU else '/cpu:0'
-      with self.graph.device(device):
-        self.U = tf.get_variable(dtype=self.DTYPE, shape=[self.V, self.cfg.D], name='U')
-        self.rep = tf.matmul(self.x_in, self.U)   # shape [batch_size, D]
-        self.W = tf.get_variable(dtype=self.DTYPE,
-                               shape=[self.cfg.D, self.N_HEADS*self.V],
+      device = '/device:GPU:0' if self._cfg.GPU else '/cpu:0'
+      with self._graph.device(device):
+        self._U = tf.get_variable(dtype=self._DTYPE, shape=[self._V, self._cfg.D], name='U')
+        rep = tf.matmul(self._x_in, self._U)   # shape [batch_size, D]
+        self._W = tf.get_variable(dtype=self._DTYPE,
+                               shape=[self._cfg.D, self._N_HEADS*self._V],
                                name='W')
-        self.logits = tf.matmul(self.rep, self.W)  # shape [batch_size, N*V]
+        logits = tf.matmul(rep, self._W)  # shape [batch_size, N*V]
 
-        self.loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
-          labels=self.y_labels, logits=self.logits
+        self._loss = tf.reduce_mean(tf.nn.sigmoid_cross_entropy_with_logits(
+          labels=self._y_labels, logits=logits
         ))
-        self._optimizer = tf.train.AdamOptimizer()
-        self.train_step = self._optimizer.minimize(self.loss)
-        self.__graph_created = True
+        optimizer = tf.train.AdamOptimizer()
+        self._train_step = optimizer.minimize(self._loss)
 
-  def data_generator(self, corpus_path, window_sizes):
+  def _data_generator(self, corpus_path, window_sizes):
     max_window = max(window_sizes)
     length = 1 + 2*max_window
     with open(corpus_path, 'r', encoding='utf-8') as f:
@@ -80,19 +79,52 @@ class Char2Vec(object):
         yield self._xy_arrays(window, midpos=max_window)
 
   def _xy_arrays(self, window, midpos):
-    X = self.tokenizer.to_1hot(window[midpos]).flatten()  #length V
+    X = self._tokenizer.to_1hot(window[midpos]).flatten()  #length V
     Ys = []
-    for p in self.cfg.WINDOW_SIZES:
+    for p in self._cfg.WINDOW_SIZES:
       t_left = window[midpos - p]
       t_right = window[midpos + p]
-      Ys.append(self.tokenizer.to_1hot(t_left).flatten())
-      Ys.append(self.tokenizer.to_1hot(t_right).flatten())
+      Ys.append(self._tokenizer.to_1hot(t_left).flatten())
+      Ys.append(self._tokenizer.to_1hot(t_right).flatten())
     Y = np.concatenate(Ys)
     return X, Y
 
-  def fit(self, path_to_corpus):
+  def train(self):
+    if self._graph is None:
+      self._create_graph()
+    config = tf.ConfigProto()
+    config.gpu_options.allow_growth = True
 
-    pass #TODO
+    with tf.Session(graph=self._graph, config=config) as sess:
+      sess.run(tf.global_variables_initializer())
+
+      # Do training & fine-tune
+      self._train(sess, print_every=3000)
+      self._train(sess, n_steps=501, batch_size=512, print_every=500)
+
+      # Save result and close sess
+      self.U_ = sess.run(self._U)  #The character embedding matrix
+      self.W_ = sess.run(self._W)  #The context prediction matrix
+
+  def _train(self, sess, n_steps=None, batch_size=None, print_every=500):
+    """Train the model. Optional params n_steps and batch_size to override default values."""
+    assert self._graph is not None
+    assert sess is not None
+    # Preparations
+    if n_steps is None:
+      n_steps = self._cfg.TOTAL_STEPS
+    if batch_size is None:
+      batch_size = self._cfg.BATCH
+
+    # Training
+    with self._graph.as_default():
+      sess.run(self._data_iter.initializer,
+                     feed_dict={self._batch_size : batch_size})
+      print("Training {} steps with batch size {}...".format(n_steps, batch_size))
+      for i in range(n_steps):
+        loss, _ = sess.run([self._loss, self._train_step])
+        if i%print_every == 0:
+          print("Step {:7d}:  loss={}".format(i, loss))
 
 
 class CharGloVe(object):
