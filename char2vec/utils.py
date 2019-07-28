@@ -2,6 +2,7 @@
 import re
 import numpy as np
 from numba import jit
+from collections import deque
 
 ALPHABET = """abcdefghijklmnopqrstuvwxyz1234567890,.()[]"' -\n"""
 
@@ -50,3 +51,25 @@ def next_line_with_rotation(f):
     f.seek(0)
     s = f.readline()
   return s
+
+def data_generator(corpus_path, window_sizes, post_func):
+  max_window = max(window_sizes)
+  length = 1 + 2*max_window
+  with open(corpus_path, 'r', encoding='utf-8') as f:
+    # Initialize buffer and window
+    buffer = deque([])
+    window = deque([])
+    while len(buffer) < length * 10 + max_window:
+      buffer.extend(next_line_with_rotation(f).lower())
+    for i in range(length):
+      window.append(buffer.popleft())
+    assert len(window) == length
+    #
+    while True:
+      # extend buffer if needed
+      while len(buffer) < length*10:
+        buffer.extend(next_line_with_rotation(f).lower())
+      #
+      window.popleft()
+      window.append(buffer.popleft())
+      yield post_func(window)

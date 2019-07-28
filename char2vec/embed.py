@@ -1,9 +1,7 @@
 
 import numpy as np
 import tensorflow as tf
-from .utils import Tokenizer, ALPHABET, normalized, next_line_with_rotation
-from collections import deque
-from functools import partial
+from .utils import Tokenizer, ALPHABET, normalized, next_line_with_rotation, data_generator
 
 class CONFIG:
   """Model hyperparams"""
@@ -67,28 +65,12 @@ class Char2Vec(object):
         self._train_step = optimizer.minimize(self._loss)
 
   def _data_generator(self, corpus_path, window_sizes):
-    max_window = max(window_sizes)
-    length = 1 + 2*max_window
-    with open(corpus_path, 'r', encoding='utf-8') as f:
-      # Initialize buffer and window
-      buffer = deque([])
-      window = deque([])
-      while len(buffer) < length * 10 + max_window:
-        buffer.extend(next_line_with_rotation(f).lower())
-      for i in range(length):
-        window.append(buffer.popleft())
-      assert len(window) == length
-      #
-      while True:
-        # extend buffer if needed
-        while len(buffer) < length*10:
-          buffer.extend(next_line_with_rotation(f).lower())
-        #
-        window.popleft()
-        window.append(buffer.popleft())
-        yield self._xy_arrays(window, midpos=max_window)
+    gen = data_generator(corpus_path, window_sizes, self._xy_arrays)
+    while True:
+      yield gen.__next__()
 
-  def _xy_arrays(self, window, midpos):
+  def _xy_arrays(self, window):
+    midpos = int((len(window) - 1)/2)
     X = self._tokenizer.to_1hot(window[midpos]).flatten()  #length V
     Ys = []
     for p in self._cfg.WINDOW_SIZES:
