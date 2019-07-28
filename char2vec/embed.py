@@ -25,6 +25,7 @@ class CONFIG:
 class Char2Vec(object):
 
   def __init__(self, corpus_path, config=CONFIG, alphabet=ALPHABET, unk='~', DTYPE=tf.float32):
+    """"""
     self._corpus_path = corpus_path
     self._cfg = config
     self._DTYPE = DTYPE
@@ -34,6 +35,7 @@ class Char2Vec(object):
     self._graph = None
 
   def _create_graph(self):
+    """Create the computational graph, save graph and some nodes as instance variables."""
     self._graph = tf.Graph()
     with self._graph.as_default():
       self._batch_size = tf.placeholder_with_default(
@@ -70,6 +72,7 @@ class Char2Vec(object):
       yield gen.__next__()
 
   def _xy_arrays(self, window):
+    """This method takes a context `window` (an iterable of characters) and return 2 arrays `X, Y` where `X` is the encoding of the middle character, and `Y` is the _context vector_."""
     midpos = int((len(window) - 1)/2)
     X = self._tokenizer.to_1hot(window[midpos]).flatten()  #length V
     Ys = []
@@ -82,6 +85,7 @@ class Char2Vec(object):
     return X, Y
 
   def train(self):
+    """Pre-defined training script"""
     if self._graph is None:
       self._create_graph()
     config = tf.ConfigProto()
@@ -99,7 +103,7 @@ class Char2Vec(object):
       self.W_ = sess.run(self._W)  #The context prediction matrix
 
   def _train(self, sess, n_steps=None, batch_size=None, print_every=500):
-    """Train the model. Optional params n_steps and batch_size to override default values."""
+    """Train the model using sess, with optional params `n_steps` and `batch_size` to override default values."""
     assert self._graph is not None
     assert sess is not None
     # Preparations
@@ -117,8 +121,3 @@ class Char2Vec(object):
         loss, _ = sess.run([self._loss, self._train_step])
         if i%print_every == 0:
           print("Step {:7d}:  loss={}".format(i, loss))
-
-
-class CharGloVe(object):
-  # TODO
-  pass
