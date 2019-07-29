@@ -4,6 +4,7 @@ Character embedding following word-vector Word2Vec. (Work-in-progress)
 ---
 
 ## Visualized embeddings:
+_(Training demo notebook: https://github.com/sonlamho/Char2Vec/blob/master/docs/demo.ipynb )_
 
 This is the result after training on a small corpus of a single Wikipedia page. The model naturally learn to group characters into:
 - Digits `0-9`;
