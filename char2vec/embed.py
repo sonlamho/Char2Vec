@@ -51,7 +51,7 @@ class Char2Vec(object):
                 shape=[],
                 name="batch_size",
             )
-            dataset = tf.data.Dataset().from_generator(
+            dataset = tf.data.Dataset.from_generator(
                 self._data_generator,
                 (self._DTYPE, self._DTYPE),
                 (tf.TensorShape([self._V]), tf.TensorShape([self._N_HEADS * self._V])),
